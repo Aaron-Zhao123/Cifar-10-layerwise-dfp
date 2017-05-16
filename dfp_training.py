@@ -89,8 +89,8 @@ def initialize_variables(exist, parent_dir, q_bits , pretrain):
         d_range = find_scaling_factor(value, biases_val[key])
         print("scale for this layer is {}".format(d_range))
         dynamic_range[key] = d_range
-        sys.exit()
     print("entire scale factor list: {}".format(dynamic_range))
+    sys.exit()
 
     return (weights, biases)
 
