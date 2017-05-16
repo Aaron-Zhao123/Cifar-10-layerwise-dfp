@@ -90,9 +90,8 @@ def initialize_variables(exist, parent_dir, q_bits , pretrain):
         print("scale for this layer is {}".format(d_range))
         dynamic_range[key] = d_range
     print("entire scale factor list: {}".format(dynamic_range))
-    sys.exit()
 
-    return (weights, biases)
+    return (weights, biases, dynamic_range)
 
 def find_scaling_factor(value, b_value):
     meta = np.concatenate((value.flatten(),b_value.flatten()), axis = 0)
@@ -367,26 +366,11 @@ def compute_weights_nbits(weights, biases, frac_bits, dynamic_range):
     weights_new = {}
     biases_new = {}
     for key in keys:
-        for i in range(dynamic_range):
-            if (i == 0):
-                w_pos = tf.cast(tf.abs(weights[key]) >= interval, dtype=tf.float32)
-                b_pos = tf.cast(tf.abs(biases[key]) >= interval, dtype=tf.float32)
-                w_val = weights[key] * w_pos
-                b_val = biases[key] * b_pos
-                weights_new[key] = tf.floordiv( w_val, interval) * interval
-                biases_new[key] = tf.floordiv( b_val, interval) * interval
-                weights_new[key] = tf.clip_by_value(weights_new[key], -1., 1.)
-                biases_new[key] = tf.clip_by_value(biases_new[key], -1., 1.)
-            else:
-                interval_dr = interval / (float) (i*2)
-                w_pos = tf.logical_and((tf.abs(weights[key]) < (interval_dr*2)), (tf.abs(weights[key]) >= interval_dr))
-                b_pos = tf.logical_and((tf.abs(biases[key]) < (interval_dr*2)), (tf.abs(biases[key]) >= interval_dr))
-                w_pos = tf.cast(w_pos, dtype=tf.float32)
-                b_pos = tf.cast(b_pos, dtype=tf.float32)
-                w_val = weights[key] * w_pos
-                b_val = biases[key] * b_pos
-                weights_new[key] += tf.floordiv(w_val, interval_dr) * interval_dr
-                biases_new[key] += tf.floordiv(b_val, interval_dr) * interval_dr
+        w_val = weights[key] / float(dynamic_range[key])
+        b_val = biases[key] / float(dynamic_range[key])
+        weights_new[key] = tf.floordiv(w_val, interval) * interval * dynamic_range[key]
+        biases_new[key] = tf.floordiv(b_val, interval) * interval * dynamic_range[key]
+    return (weights_new, biases_new)
     return (weights_new, biases_new)
 
 def main(argv = None):
@@ -411,8 +395,6 @@ def main(argv = None):
                     base_model = val
                 if (opt == '-pretrain'):
                     pretrain = val
-                if (opt == '-dynamic_range'):
-                    dynamic_range = val
             print('pretrain is {}'.format(pretrain))
         except getopt.error, msg:
             raise Usage(msg)
@@ -448,7 +430,7 @@ def main(argv = None):
 
         training_data_list = []
 
-        weights, biases = initialize_variables(PREV_MODEL_EXIST, parent_dir, q_bits, pretrain)
+        weights, biases, dynamic_range = initialize_variables(PREV_MODEL_EXIST, parent_dir, q_bits, pretrain)
         weights, biases = compute_weights_nbits(weights, biases, q_bits, dynamic_range)
 
         x = tf.placeholder(tf.float32, [None, 32, 32, 3])
